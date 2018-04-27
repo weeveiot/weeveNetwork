@@ -4,65 +4,82 @@ import "./weeveRegistryLib.sol";
 import "./Owned.sol";
 
 // An exemplary weeve Registry contract
-contract myWeeveRegistry is Owned {    
+contract myRegistry is Owned {    
     using SafeMath for uint;
 
     // General storage for the Registry
     weeveRegistry.RegistryStorage public myRegistryStorage;
 
+    // Address of the weeve Factory
+    // address public weeveFactoryAddress = 0x0000000000000000000000000000000000000000;
+
+    // Address of the WEEV token
+    address public weeveTokenAddress = 0x0000000000000000000000000000000000000000;
+
+    // Name of the registry
+    string public registryName;
+
     // Constructor (fired once upon creation)
-    constructor(address _erc20Address) public {
-        // Values for staking, just for testing purposes (not final)
-        myRegistryStorage.tokenStakePerRegistry = 10;
-        myRegistryStorage.tokenStakePerArbiter = 100;
-        myRegistryStorage.tokenStakePerValidator = 100;
+    constructor() public {
+        // Initialle the registry is not active
+        myRegistryStorage.registryIsActive = false;
 
-        // Setting the address of the erc20 token
-        require(_erc20Address != address(0));
-        myRegistryStorage.token = ERC20(_erc20Address);
-
-        // Allocate an empty device to be able to delete 
-        // devices by replacing them
+        // Allocate an empty device to be able to delete devices by replacing them
         weeveRegistry.Device memory emptyDevice;
         myRegistryStorage.devices["empty"] = emptyDevice;
     }
+
+    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator) public {
+        // require(msg.sender == weeveFactoryAddress);
+        // Setting the name of the registry
+        registryName = _name;
+
+        // Values for staking, just for testing purposes (not final)
+        myRegistryStorage.tokenStakePerRegistration = _stakePerRegistration;
+        myRegistryStorage.tokenStakePerArbiter = _stakePerArbiter;
+        myRegistryStorage.tokenStakePerValidator = _stakePerValidator;
+
+        // Number of all active devices
+        myRegistryStorage.activeDevices = 0;
+
+        // Activation of the registry
+        myRegistryStorage.registryIsActive = true;
+
+        // Setting the address of the WEEV erc20 token
+        myRegistryStorage.token = ERC20(weeveTokenAddress);
+    }
        
     // Request access to the registry
-    function requestRegistry(string _deviceName, string _deviceID, bytes32[] _deviceMeta) public deviceIDNotUsed(_deviceID) hasEnoughTokensAllowed(msg.sender, myRegistryStorage.tokenStakePerRegistry) {
-        require(weeveRegistry.requestRegistry(myRegistryStorage, _deviceName, _deviceID, _deviceMeta, msg.sender));
+    function requestRegistration(string _deviceName, string _deviceID, bytes32[] _deviceMeta) public registryIsActive deviceIDNotUsed(_deviceID) hasEnoughTokensAllowed(msg.sender, myRegistryStorage.tokenStakePerRegistration) {
+        require(weeveRegistry.requestRegistration(myRegistryStorage, _deviceName, _deviceID, _deviceMeta, msg.sender));
     }
 
     // Simulating the approval from a validator (through oraclize)    
-    function approveRegistry (string _deviceID) public isValidator(msg.sender) deviceExists(_deviceID) hasEnoughTokensAllowed(myRegistryStorage.devices[_deviceID].deviceOwner, myRegistryStorage.tokenStakePerRegistry) {
-        require(weeveRegistry.approveRegistry(myRegistryStorage, _deviceID));      
+    function approveRegistration(string _deviceID) public registryIsActive isValidator(msg.sender) deviceExists(_deviceID) hasEnoughTokensAllowed(myRegistryStorage.devices[_deviceID].deviceOwner, myRegistryStorage.tokenStakePerRegistration) {
+        require(weeveRegistry.approveRegistration(myRegistryStorage, _deviceID));      
     }
     
     // Unregistering your device
-    function unregister (string _deviceID) public isOwnerOfDevice(msg.sender, _deviceID) deviceExists(_deviceID) {
+    function unregister(string _deviceID) public registryIsActive isOwnerOfDevice(msg.sender, _deviceID) deviceExists(_deviceID) {
         require(weeveRegistry.unregister(myRegistryStorage, msg.sender, _deviceID));
     }
 
     // In case of programming errors or other bugs the owner is able to refund staked tokens to it's owner
-    // This will be removed once the contract is proven to work corecctly
-    function emergencyRefund(address _address, uint _numberOfTokens) public onlyOwner {
+    // This will be removed once the contract is proven to work correctly
+    // TODO: Remove stake on a per-device-basis and deactivate the device accordingly
+    function emergencyRefund(address _address, uint256 _numberOfTokens) public onlyOwner {
         require(myRegistryStorage.totalStakedTokens[_address] > 0 && myRegistryStorage.totalStakedTokens[_address] >= _numberOfTokens);
         myRegistryStorage.token.transfer(_address, _numberOfTokens);
     }
 
     // Returns the total staked tokens of an address
-    function getTotalStake(address _address) public view returns (uint256 totalStake){
+    function getTotalStakeOfAddress(address _address) public view returns (uint256 totalStake){
         require(_address == msg.sender || msg.sender == owner);
         return myRegistryStorage.totalStakedTokens[_address];
     }
-
-    // Returns the allowance of tokens of an address (just for testing-purposes)
-    // (Possible warnings because of "view" declaration can be ignored.)
-    function tokenGetAllowance(address _address) public view returns (uint allowance) {
-        return myRegistryStorage.token.allowance(_address, address(this));
-    }
-    
+   
     // Returns the basic information of a device by its ID
-    function getDeviceByID(string _deviceID) public view isOwnerOfDevice(msg.sender, _deviceID) deviceExists(_deviceID) returns (string deviceName, string deviceID, string hashOfDeviceData, address owner, uint stakedTokens, string registyState) {
+    function getDeviceByID(string _deviceID) public view isOwnerOfDevice(msg.sender, _deviceID) deviceExists(_deviceID) returns (string deviceName, string deviceID, string hashOfDeviceData, address owner, uint256 stakedTokens, string registyState) {
         return (myRegistryStorage.devices[_deviceID].deviceName, myRegistryStorage.devices[_deviceID].deviceID, myRegistryStorage.devices[_deviceID].hashOfDeviceData, myRegistryStorage.devices[_deviceID].deviceOwner, myRegistryStorage.devices[_deviceID].stakedTokens, myRegistryStorage.devices[_deviceID].state);
     }
 
@@ -77,38 +94,43 @@ contract myWeeveRegistry is Owned {
     }
 
     // Returns the basic information of a device through the list of devices for an account
-    function getDeviceIDFromArray(address _address, uint _devicePositionInArray) public view deviceExistsInArray(_address, _devicePositionInArray) returns (string deviceID) {
+    function getDeviceIDFromArray(address _address, uint256 _devicePositionInArray) public view deviceExistsInUserArray(_address, _devicePositionInArray) returns (string deviceID) {
         return myRegistryStorage.devicesOfUser[_address][_devicePositionInArray];
     }
 
     // Returns amount of devices that an address has in this registry
-    function getDeviceCountOfUser(address _address) public view returns (uint numberOfDevices) {
+    function getTotalDeviceCount() public view returns (uint256 numberOfDevices) {
+        return myRegistryStorage.activeDevices;
+    }
+
+    // Returns amount of devices that an address has in this registry
+    function getDeviceCountOfUser(address _address) public view returns (uint256 numberOfDevices) {
         return myRegistryStorage.devicesOfUser[_address].length;
     }
 
     // Returns the amount of tokens to be staked for a registry
-    function getStakePerRegistry() public view returns (uint stakePerRegistry){
-        return myRegistryStorage.tokenStakePerRegistry;
+    function getStakePerRegistration() public view returns (uint256 stakePerRegistry){
+        return myRegistryStorage.tokenStakePerRegistration;
     }
 
     // Sets the amount of tokens to be staked for a registry
-    function setStakePerRegistry(uint _numberOfTokens) public onlyOwner {
-        myRegistryStorage.tokenStakePerRegistry = _numberOfTokens;
+    function setStakePerRegistration(uint256 _numberOfTokens) public onlyOwner {
+        myRegistryStorage.tokenStakePerRegistration = _numberOfTokens;
     }
 
-    function addValidator(address _address) public onlyOwner {
+    function addValidator(address _address) public registryIsActive onlyOwner() {
         myRegistryStorage.validators[_address].validatorAddress = _address;
     }
 
-    function removeValidator(address _address) public onlyOwner {
+    function removeValidator(address _address) public registryIsActive onlyOwner {
         delete myRegistryStorage.validators[_address];
     }
 
-    function addArbiter(address _address) public onlyOwner {
+    function addArbiter(address _address) public registryIsActive onlyOwner {
         myRegistryStorage.arbiters[_address].arbiterAddress = _address;
     }
 
-    function removeArbiter(address _address) public onlyOwner {
+    function removeArbiter(address _address) public registryIsActive onlyOwner {
         delete myRegistryStorage.arbiters[_address];
     }
     
@@ -129,7 +151,7 @@ contract myWeeveRegistry is Owned {
     }
     
     // Modifier: Checks whether an address has enough tokens authorized to be withdrawn by the registry
-    modifier hasEnoughTokensAllowed(address _address, uint _numberOfTokens) {
+    modifier hasEnoughTokensAllowed(address _address, uint256 _numberOfTokens) {
         require(myRegistryStorage.token.allowance(_address, address(this)) >= _numberOfTokens);
         _;
     }
@@ -165,8 +187,14 @@ contract myWeeveRegistry is Owned {
     }
 
     // Modifier: Temporary helper function
-    modifier deviceExistsInArray(address _address, uint _devicePositionInArray) {
+    modifier deviceExistsInUserArray(address _address, uint256 _devicePositionInArray) {
         require(myRegistryStorage.devicesOfUser[_address].length > _devicePositionInArray);
+        _;
+    }
+
+    // Modifier: Checks whether this registry is activated
+    modifier registryIsActive() {
+        require(myRegistryStorage.registryIsActive);
         _;
     }
 }

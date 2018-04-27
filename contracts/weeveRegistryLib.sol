@@ -11,17 +11,17 @@ interface ERC20 {
     function approve(address spender, uint tokens) external returns (bool success);
     function transferFrom(address from, address to, uint tokens) external returns (bool success);
 }
-    
-library weeveRegistry {    
+
+library weeveRegistry {
     using SafeMath for uint;
 
     struct Device {
         string deviceName;
-        string deviceID;
-        string hashOfDeviceData;
+        string deviceID;        
         address deviceOwner; 
-        uint stakedTokens;
+        uint256 stakedTokens;
         string state;
+        string hashOfDeviceData;
         Metainformation metainformation;
     }
     
@@ -41,13 +41,14 @@ library weeveRegistry {
 
     struct Validator {
         address validatorAddress;
-        uint stakedTokens;
+        uint256 stakedTokens;
     }
 
     struct Arbiter {
         address arbiterAddress;
-        uint stakedTokens;
+        uint256 stakedTokens;
     }
+    
     struct RegistryStorage {
         // DeviceID maps to Device-Struct
         mapping (string => Device) devices;
@@ -68,16 +69,22 @@ library weeveRegistry {
         mapping (address => uint) totalStakedTokens;
 
         // Count of Tokens that need to be staked
-        uint tokenStakePerRegistry;
-        uint tokenStakePerValidator;
-        uint tokenStakePerArbiter;
+        uint256 tokenStakePerRegistration;
+        uint256 tokenStakePerValidator;
+        uint256 tokenStakePerArbiter;
+
+        // Number of all active devices
+        uint256 activeDevices;
+
+        // Current activation state of the registry itself
+        bool registryIsActive;
 
         // Access to our token
         ERC20 token;
     }
 
     // Request access to the registry
-    function requestRegistry(RegistryStorage storage myRegistryStorage, string _deviceName, string _deviceID, bytes32[] _deviceMeta, address _sender) public returns(bool){
+    function requestRegistration(RegistryStorage storage myRegistryStorage, string _deviceName, string _deviceID, bytes32[] _deviceMeta, address _sender) public returns(bool){
         // Allocate new device
         Device memory newDevice;
         Metainformation memory newMetainformation;
@@ -97,9 +104,10 @@ library weeveRegistry {
 
         // If enough values are given, the information will be checked directly in this contract
         if(_deviceMeta.length == 11) {
-            require(validateRegistry(myRegistryStorage, _deviceID, _deviceMeta));
-            if(stakeTokens(myRegistryStorage, _sender, _deviceID, myRegistryStorage.tokenStakePerRegistry)) {
+            require(validateRegistration(myRegistryStorage, _deviceID, _deviceMeta));
+            if(stakeTokens(myRegistryStorage, _sender, _deviceID, myRegistryStorage.tokenStakePerRegistration)) {
                 myRegistryStorage.devices[_deviceID].state = "accepted";
+                myRegistryStorage.activeDevices = myRegistryStorage.activeDevices.add(1);
             } else {
                 myRegistryStorage.devices[_deviceID].state = "unproven";
             }            
@@ -114,7 +122,7 @@ library weeveRegistry {
     }
     
     // Validate a registry-request with enough values (currently just setting instead of checking)
-    function validateRegistry(RegistryStorage storage myRegistryStorage, string _deviceID, bytes32[] _deviceMeta) public returns(bool) {
+    function validateRegistration(RegistryStorage storage myRegistryStorage, string _deviceID, bytes32[] _deviceMeta) internal returns(bool) {
         myRegistryStorage.devices[_deviceID].metainformation.sensors = bytes32ToString(_deviceMeta[0]);
         myRegistryStorage.devices[_deviceID].metainformation.dataType = bytes32ToString(_deviceMeta[1]);
         myRegistryStorage.devices[_deviceID].metainformation.manufacturer = bytes32ToString(_deviceMeta[2]);
@@ -130,23 +138,25 @@ library weeveRegistry {
     }
 
     // Simulating the approval from a validator (through oraclize)    
-    function approveRegistry (RegistryStorage storage myRegistryStorage, string _deviceID) public returns(bool){
+    function approveRegistration(RegistryStorage storage myRegistryStorage, string _deviceID) public returns(bool){
         require(myRegistryStorage.devices[_deviceID].stakedTokens == 0);
-        require(stakeTokens(myRegistryStorage, myRegistryStorage.devices[_deviceID].deviceOwner, _deviceID, myRegistryStorage.tokenStakePerRegistry));
+        require(stakeTokens(myRegistryStorage, myRegistryStorage.devices[_deviceID].deviceOwner, _deviceID, myRegistryStorage.tokenStakePerRegistration));
         myRegistryStorage.devices[_deviceID].state = "accepted";
+        myRegistryStorage.activeDevices = myRegistryStorage.activeDevices.add(1);
         return true;
     }
 
     // Unregistering your device
-    function unregister (RegistryStorage storage myRegistryStorage, address _sender, string _deviceID) public returns(bool){
+    function unregister(RegistryStorage storage myRegistryStorage, address _sender, string _deviceID) public returns(bool){
         require(unstakeTokens(myRegistryStorage, _sender, _deviceID));
         myRegistryStorage.devices[_deviceID] = myRegistryStorage.devices["empty"];
         deleteFromArray(myRegistryStorage, _sender, _deviceID);
+        myRegistryStorage.activeDevices = myRegistryStorage.activeDevices.sub(1);
         return true;
     }
 
     // Stake tokens through our ERC20 contract
-    function stakeTokens(RegistryStorage storage myRegistryStorage, address _address, string _deviceID, uint _numberOfTokens) internal returns(bool) {
+    function stakeTokens(RegistryStorage storage myRegistryStorage, address _address, string _deviceID, uint256 _numberOfTokens) internal returns(bool) {
         myRegistryStorage.token.transferFrom(_address, address(this), _numberOfTokens);
         myRegistryStorage.devices[_deviceID].stakedTokens = myRegistryStorage.devices[_deviceID].stakedTokens.add(_numberOfTokens);
         myRegistryStorage.totalStakedTokens[_address] = myRegistryStorage.totalStakedTokens[_address].add(_numberOfTokens);
