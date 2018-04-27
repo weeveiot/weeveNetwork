@@ -55,8 +55,8 @@ contract myRegistry is Owned {
     }
 
     // Simulating the approval from a validator (through oraclize)    
-    function approveRegistration(string _deviceID) public registryIsActive isValidator(msg.sender) deviceExists(_deviceID) hasEnoughTokensAllowed(myRegistryStorage.devices[_deviceID].deviceOwner, myRegistryStorage.tokenStakePerRegistration) {
-        require(weeveRegistry.approveRegistration(myRegistryStorage, _deviceID));      
+    function approveRegistrationRequest(string _deviceID) public registryIsActive isValidator(msg.sender) deviceExists(_deviceID) hasEnoughTokensAllowed(myRegistryStorage.devices[_deviceID].deviceOwner, myRegistryStorage.tokenStakePerRegistration) {
+        require(weeveRegistry.approveRegistrationRequest(myRegistryStorage, _deviceID));      
     }
     
     // Unregistering your device
@@ -94,7 +94,7 @@ contract myRegistry is Owned {
     }
 
     // Returns the basic information of a device through the list of devices for an account
-    function getDeviceIDFromArray(address _address, uint256 _devicePositionInArray) public view deviceExistsInUserArray(_address, _devicePositionInArray) returns (string deviceID) {
+    function getDeviceIDFromUserArray(address _address, uint256 _devicePositionInArray) public view deviceExistsInUserArray(_address, _devicePositionInArray) returns (string deviceID) {
         return myRegistryStorage.devicesOfUser[_address][_devicePositionInArray];
     }
 

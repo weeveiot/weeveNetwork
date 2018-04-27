@@ -138,7 +138,7 @@ library weeveRegistry {
     }
 
     // Simulating the approval from a validator (through oraclize)    
-    function approveRegistration(RegistryStorage storage myRegistryStorage, string _deviceID) public returns(bool){
+    function approveRegistrationRequest(RegistryStorage storage myRegistryStorage, string _deviceID) public returns(bool){
         require(myRegistryStorage.devices[_deviceID].stakedTokens == 0);
         require(stakeTokens(myRegistryStorage, myRegistryStorage.devices[_deviceID].deviceOwner, _deviceID, myRegistryStorage.tokenStakePerRegistration));
         myRegistryStorage.devices[_deviceID].state = "accepted";
