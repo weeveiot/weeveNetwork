@@ -11,7 +11,7 @@ contract myRegistry is Owned {
     weeveRegistry.RegistryStorage public myRegistryStorage;
 
     // Address of the weeve Factory
-    // address public weeveFactoryAddress = 0x0000000000000000000000000000000000000000;
+    address public weeveFactoryAddress = 0x0000000000000000000000000000000000000000;
 
     // Address of the WEEV token
     address public weeveTokenAddress = 0x0000000000000000000000000000000000000000;
@@ -29,8 +29,8 @@ contract myRegistry is Owned {
         myRegistryStorage.devices["empty"] = emptyDevice;
     }
 
-    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator) public {
-        // require(msg.sender == weeveFactoryAddress);
+    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator) public returns(bool){
+        require(msg.sender == weeveFactoryAddress);
         // Setting the name of the registry
         registryName = _name;
 
@@ -47,6 +47,8 @@ contract myRegistry is Owned {
 
         // Setting the address of the WEEV erc20 token
         myRegistryStorage.token = ERC20(weeveTokenAddress);
+        
+        return true;
     }
        
     // Request access to the registry
