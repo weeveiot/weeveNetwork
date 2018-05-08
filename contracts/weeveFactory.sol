@@ -15,7 +15,7 @@ interface ERC20 {
 
 // Interface for our registries
 interface weeveRegistry {
-    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator) external returns (bool);
+    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) external returns (bool);
     function requestRegistration(string _deviceName, string _deviceID, bytes32[] _deviceMeta) external;
     function approveRegistrationRequest(string _deviceID) external;
     function unregister(string _deviceID) external;
@@ -37,15 +37,36 @@ interface weeveRegistry {
     function checkArbiterStatus(address _address) external returns (bool status);
 }
 
+// Interface for our marketplaces
+interface weeveMarketplace {
+    function initialize(string _name, uint256 _commission, address _owner) external returns (bool);
+    function sell(string _tradeID, uint256 _price, uint256 _amount) external;
+    function buy(string _tradeID) external;
+    function withdrawCommission(address _recipientAddress, uint256 _amountOfTokens) external;
+    function getTrade(string _tradeID) external returns(string tradeID, address seller, uint256 price, uint256 amount, bool paid);
+    function getTotalTradeCount() external returns (uint256 numberOfCurrentTrades);
+    function changeCommission(uint256 _commission) external;
+    function addValidator(address _address) external;
+    function removeValidator(address _address) external;
+    function addArbiter(address _address) external;
+    function removeArbiter(address _address)external;    
+    function checkValidatorStatus(address _address) external returns (bool status);
+    function checkArbiterStatus(address _address) external returns (bool status);
+}
+
 contract weeveFactory is Owned {
     using SafeMath for uint;
 
-    // The current hash of the valid registry code
+    // The current hash of the valid registry and marketplace code
     // (Will be replaced by an array of hashes soon-ish)
     bytes32 public weeveRegistryHash;
+    bytes32 public weeveMarketplaceHash;
 
     // Mapping from address to uint-array (maps an address to all of its registry id's)
     mapping(address => uint256[]) userRegistries;
+
+    // Mapping from address to uint-array (maps an address to all of its marketplace id's)
+    mapping(address => uint256[]) userMarketplaces;
 
     struct Registry {
         uint256 id;
@@ -56,14 +77,29 @@ contract weeveFactory is Owned {
         bool active;
     }
 
+    struct Marketplace {
+        uint256 id;
+        string name;
+        address owner;
+        address marketplaceAddress;
+        uint256 stakedTokens;
+        bool active;
+    }
+
     // Array of all registries
     Registry[] public allRegistries;
+
+    // Array of all registries
+    Marketplace[] public allMarketplaces;
 
     // Our ERC20 token
     ERC20 public token;
 
     // Tokens that need to be staked for each registry (soon to be dynamic)
     uint256 tokensPerRegistryCreation;
+
+    // Tokens that need to be staked for each registry (soon to be dynamic)
+    uint256 tokensPerMarketplaceCreation;
 
     constructor(address _erc20Address) public {
         require(_erc20Address != address(0));
@@ -74,8 +110,14 @@ contract weeveFactory is Owned {
         // weeve Registry code hash (placeholder)
         weeveRegistryHash = 0x0000000000000000000000000000000000000000000000000000000000000000;
 
+        // weeve Marketplace code hash (placeholder)
+        weeveMarketplaceHash = 0x0000000000000000000000000000000000000000000000000000000000000000;
+
         // Tokens per Registry (soon to by dynamic)
         tokensPerRegistryCreation = 1000;
+
+        // Tokens per Marketplace (soon to by dynamic)
+        tokensPerMarketplaceCreation = 1000;
     }
 
     // Setting a new valid registry code hash as an owner
@@ -83,8 +125,13 @@ contract weeveFactory is Owned {
         weeveRegistryHash = keccak256(_contractCode);
     }
 
+    // Setting a new valid marketplace code hash as an owner
+    function setNewMarketplaceHash(bytes _contractCode) public onlyOwner {
+        weeveMarketplaceHash = keccak256(_contractCode);
+    }
+
     // Creating a new registry
-    function createRegistry(string _name, bytes _contractCode) public hasEnoughTokensAllowed(msg.sender, tokensPerRegistryCreation) returns (address newRegistryAddress) {
+    function createRegistry(string _name, uint256 _tokensPerRegistration, bytes _contractCode) public hasEnoughTokensAllowed(msg.sender, tokensPerRegistryCreation) returns (address newRegistryAddress) {
         // Hash of the contract code has to be correct (no invalid/untrusted code can be deployed)
         require(weeveRegistryHash == keccak256(_contractCode));
 
@@ -99,12 +146,12 @@ contract weeveFactory is Owned {
         require(newRegistry.stakedTokens >= tokensPerRegistryCreation);
 
         // Deploying the contract
-        newRegistry.registryAddress = deployRegistry(_contractCode);
+        newRegistry.registryAddress = deployCode(_contractCode);
         require(newRegistry.registryAddress != address(0));
 
         // Activating the new registry
         weeveRegistry newWeeveRegistry = weeveRegistry(newRegistry.registryAddress);
-        require(newWeeveRegistry.initialize(_name, 10, 12, 13));
+        require(newWeeveRegistry.initialize(_name, _tokensPerRegistration, 50, 50, msg.sender));
 
         // The new registry is now active
         newRegistry.active = true;
@@ -118,9 +165,45 @@ contract weeveFactory is Owned {
         // Returning the registries address
         return newRegistry.registryAddress;
     }
+
+    // Creating a new marketplace
+    function createMarketplace(string _name, uint256 _commission, bytes _contractCode) public hasEnoughTokensAllowed(msg.sender, tokensPerMarketplaceCreation) returns (address newMarketplaceAddress) {
+        // Hash of the contract code has to be correct (no invalid/untrusted code can be deployed)
+        require(weeveMarketplaceHash == keccak256(_contractCode));
+
+        // Allocating a new marketplace struct
+        Marketplace memory newMarketplace;
+        newMarketplace.id = allMarketplaces.length;
+        newMarketplace.name = _name;
+        newMarketplace.owner = msg.sender;
+        
+        // Staking of the tokens
+        newMarketplace.stakedTokens = stakeTokens(msg.sender, tokensPerMarketplaceCreation);
+        require(newMarketplace.stakedTokens >= tokensPerMarketplaceCreation);
+
+        // Deploying the contract
+        newMarketplace.marketplaceAddress = deployCode(_contractCode);
+        require(newMarketplace.marketplaceAddress != address(0));
+
+        // Activating the new marketplace
+        weeveMarketplace newWeeveMarketplace = weeveMarketplace(newMarketplace.marketplaceAddress);
+        require(newWeeveMarketplace.initialize(_name, _commission, msg.sender));
+
+        // The new marketplace is now active
+        newMarketplace.active = true;
+
+        // Adding the marketplace to the users marketplace array
+        userMarketplaces[msg.sender].push(newMarketplace.id);
+
+        // Adding the marketplace to the general marketplace array
+        allMarketplaces.push(newMarketplace);
+        
+        // Returning the marketplaces address
+        return newMarketplace.marketplaceAddress;
+    }
     
     // Internal function to deploy bytecode to the blockchain
-    function deployRegistry(bytes _contractCode) internal returns (address addr) {
+    function deployCode(bytes _contractCode) internal returns (address addr) {
         uint256 asmReturnValue;
         // Inline Assembly in generally considered insecure by most linters, but it's fine in this case
         /* solium-disable-next-line */
@@ -141,6 +224,18 @@ contract weeveFactory is Owned {
         allRegistries[_id].stakedTokens = 0;
         allRegistries[_id].active = false;
         // TODO: Disable Registry
+    }
+
+    // Closing a registry where no devices are active anymore (only the registry owner is allowed to do this)
+    function closeMarketplace(uint256 _id) public isOwnerOfMarketplace(msg.sender, _id) {
+        weeveMarketplace theMarketplace = weeveMarketplace(allMarketplaces[_id].marketplaceAddress);
+        // Only if the amount of active devices is zero
+        require(theMarketplace.getTotalTradeCount() == 0);
+        // Unstaking the remaining tokens
+        require(unstakeTokens(allMarketplaces[_id].owner, allMarketplaces[_id].stakedTokens));
+        allMarketplaces[_id].stakedTokens = 0;
+        allMarketplaces[_id].active = false;
+        // TODO: Disable Marketplace
     }
 
     // Stake tokens through our ERC20 contract
@@ -165,6 +260,12 @@ contract weeveFactory is Owned {
     // Modifier: Checks whether an address is the owner of a registry
     modifier isOwnerOfRegistry(address _address, uint256 _id) {
         require(allRegistries[_id].owner == _address);
+        _;
+    }
+
+    // Modifier: Checks whether an address is the owner of a marketplace
+    modifier isOwnerOfMarketplace(address _address, uint256 _id) {
+        require(allMarketplaces[_id].owner == _address);
         _;
     }
 }
