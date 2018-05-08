@@ -21,7 +21,7 @@ contract myRegistry is Owned {
 
     // Constructor (fired once upon creation)
     constructor() public {
-        // Initialle the registry is not active
+        // Initially the registry is not active
         myRegistryStorage.registryIsActive = false;
 
         // Allocate an empty device to be able to delete devices by replacing them
@@ -29,10 +29,16 @@ contract myRegistry is Owned {
         myRegistryStorage.devices["empty"] = emptyDevice;
     }
 
-    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator) public returns(bool){
+    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public returns(bool){
+        // Only the weeve factory is able to initialise a registry
         require(msg.sender == weeveFactoryAddress);
+
         // Setting the name of the registry
         registryName = _name;
+
+        // Setting the owner of the marketplace
+        require(_owner != address(0));
+        owner = _owner;
 
         // Values for staking, just for testing purposes (not final)
         myRegistryStorage.tokenStakePerRegistration = _stakePerRegistration;
