@@ -1,7 +1,7 @@
 pragma solidity ^0.4.23;
 
-import "./weeveRegistryLib.sol";
-import "./Owned.sol";
+import "./libraries/weeveRegistryLib.sol";
+import "./libraries/Owned.sol";
 
 // An exemplary weeve Registry contract
 contract myRegistry is Owned {    

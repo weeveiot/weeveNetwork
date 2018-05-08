@@ -1,7 +1,7 @@
 pragma solidity ^0.4.23;
 
-import "./SafeMath.sol";
-import "./Owned.sol";
+import "./libraries/SafeMath.sol";
+import "./libraries/Owned.sol";
 
 // Basic ERC20 Interface 
 interface ERC20 {
