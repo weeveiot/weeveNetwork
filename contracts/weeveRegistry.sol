@@ -1,10 +1,9 @@
 pragma solidity ^0.4.23;
 
 import "./libraries/weeveRegistryLib.sol";
-import "./libraries/Owned.sol";
 
 // An exemplary weeve Registry contract
-contract myRegistry is Owned {    
+contract myRegistry {    
     using SafeMath for uint;
 
     // General storage for the Registry
@@ -38,7 +37,7 @@ contract myRegistry is Owned {
 
         // Setting the owner of the marketplace
         require(_owner != address(0));
-        owner = _owner;
+        myRegistryStorage.registryOwner = _owner;
 
         // Values for staking, just for testing purposes (not final)
         myRegistryStorage.tokenStakePerRegistration = _stakePerRegistration;
@@ -54,6 +53,14 @@ contract myRegistry is Owned {
         // Setting the address of the WEEV erc20 token
         myRegistryStorage.token = ERC20(weeveTokenAddress);
         
+        return true;
+    }
+
+    function closeRegistry() public returns (bool) {
+        // Only the weeve factory is able to initialise a registry
+        require(msg.sender == weeveFactoryAddress);
+        require(myRegistryStorage.activeDevices == 0);
+        myRegistryStorage.registryIsActive = false;
         return true;
     }
        
@@ -75,14 +82,14 @@ contract myRegistry is Owned {
     // In case of programming errors or other bugs the owner is able to refund staked tokens to it's owner
     // This will be removed once the contract is proven to work correctly
     // TODO: Remove stake on a per-device-basis and deactivate the device accordingly
-    function emergencyRefund(address _address, uint256 _numberOfTokens) public onlyOwner {
+    function emergencyRefund(address _address, uint256 _numberOfTokens) public onlyRegistryOwner {
         require(myRegistryStorage.totalStakedTokens[_address] > 0 && myRegistryStorage.totalStakedTokens[_address] >= _numberOfTokens);
         myRegistryStorage.token.transfer(_address, _numberOfTokens);
     }
 
     // Returns the total staked tokens of an address
     function getTotalStakeOfAddress(address _address) public view returns (uint256 totalStake){
-        require(_address == msg.sender || msg.sender == owner);
+        require(_address == msg.sender || msg.sender == myRegistryStorage.registryOwner);
         return myRegistryStorage.totalStakedTokens[_address];
     }
    
@@ -122,23 +129,23 @@ contract myRegistry is Owned {
     }
 
     // Sets the amount of tokens to be staked for a registry
-    function setStakePerRegistration(uint256 _numberOfTokens) public onlyOwner {
+    function setStakePerRegistration(uint256 _numberOfTokens) public onlyRegistryOwner {
         myRegistryStorage.tokenStakePerRegistration = _numberOfTokens;
     }
 
-    function addValidator(address _address) public registryIsActive onlyOwner() {
+    function addValidator(address _address) public registryIsActive onlyRegistryOwner {
         myRegistryStorage.validators[_address].validatorAddress = _address;
     }
 
-    function removeValidator(address _address) public registryIsActive onlyOwner {
+    function removeValidator(address _address) public registryIsActive onlyRegistryOwner {
         delete myRegistryStorage.validators[_address];
     }
 
-    function addArbiter(address _address) public registryIsActive onlyOwner {
+    function addArbiter(address _address) public registryIsActive onlyRegistryOwner {
         myRegistryStorage.arbiters[_address].arbiterAddress = _address;
     }
 
-    function removeArbiter(address _address) public registryIsActive onlyOwner {
+    function removeArbiter(address _address) public registryIsActive onlyRegistryOwner {
         delete myRegistryStorage.arbiters[_address];
     }
     
@@ -156,6 +163,12 @@ contract myRegistry is Owned {
         } else {
             return false;
         }
+    }
+    
+    // Modifier: Checks whether the caller is the owner of this registry
+    modifier onlyRegistryOwner {
+        require(msg.sender == myRegistryStorage.registryOwner);
+        _;
     }
     
     // Modifier: Checks whether an address has enough tokens authorized to be withdrawn by the registry

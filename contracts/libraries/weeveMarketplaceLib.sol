@@ -61,6 +61,9 @@ library weeveMarketplace {
         // Currently acrued commission of this marketplace
         uint256 commissionBalance;
 
+        // Owner of this marketplace
+        address marketplaceOwner;
+
         // Access to our token
         ERC20 token;
     }

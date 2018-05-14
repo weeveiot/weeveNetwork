@@ -16,6 +16,7 @@ interface ERC20 {
 // Interface for our registries
 interface weeveRegistry {
     function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) external returns (bool);
+    function closeRegistry() external returns (bool);
     function requestRegistration(string _deviceName, string _deviceID, bytes32[] _deviceMeta) external;
     function approveRegistrationRequest(string _deviceID) external;
     function unregister(string _deviceID) external;
@@ -40,6 +41,7 @@ interface weeveRegistry {
 // Interface for our marketplaces
 interface weeveMarketplace {
     function initialize(string _name, uint256 _commission, address _owner) external returns (bool);
+    function closeMarketplace() external returns (bool);
     function sell(string _tradeID, uint256 _price, uint256 _amount) external;
     function buy(string _tradeID) external;
     function withdrawCommission(address _recipientAddress, uint256 _amountOfTokens) external;
@@ -219,11 +221,12 @@ contract weeveFactory is Owned {
         weeveRegistry theRegistry = weeveRegistry(allRegistries[_id].registryAddress);
         // Only if the amount of active devices is zero
         require(theRegistry.getTotalDeviceCount() == 0);
+        // Calling the closeRegistry function of this registry
+        require(theRegistry.closeRegistry());
         // Unstaking the remaining tokens
         require(unstakeTokens(allRegistries[_id].owner, allRegistries[_id].stakedTokens));
         allRegistries[_id].stakedTokens = 0;
         allRegistries[_id].active = false;
-        // TODO: Disable Registry
     }
 
     // Closing a registry where no devices are active anymore (only the registry owner is allowed to do this)
@@ -231,11 +234,12 @@ contract weeveFactory is Owned {
         weeveMarketplace theMarketplace = weeveMarketplace(allMarketplaces[_id].marketplaceAddress);
         // Only if the amount of active devices is zero
         require(theMarketplace.getTotalTradeCount() == 0);
+        // Calling the closeMarketplace function of this marketplace
+        require(theMarketplace.closeMarketplace());
         // Unstaking the remaining tokens
         require(unstakeTokens(allMarketplaces[_id].owner, allMarketplaces[_id].stakedTokens));
         allMarketplaces[_id].stakedTokens = 0;
         allMarketplaces[_id].active = false;
-        // TODO: Disable Marketplace
     }
 
     // Stake tokens through our ERC20 contract

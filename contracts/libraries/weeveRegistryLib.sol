@@ -79,6 +79,9 @@ library weeveRegistry {
         // Current activation state of the registry itself
         bool registryIsActive;
 
+        // Owner of the registry
+        address registryOwner;
+
         // Access to our token
         ERC20 token;
     }

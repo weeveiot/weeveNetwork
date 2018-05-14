@@ -1,10 +1,9 @@
 pragma solidity ^0.4.23;
 
 import "./libraries/weeveMarketplaceLib.sol";
-import "./libraries/Owned.sol";
 
 // An exemplary weeve marketplace contract
-contract myMarketplace is Owned {    
+contract myMarketplace {    
     using SafeMath for uint;
 
     // General storage for the marketplace
@@ -34,7 +33,7 @@ contract myMarketplace is Owned {
 
         // Setting the owner of the marketplace
         require(_owner != address(0));
-        owner = _owner;
+        myMarketplaceStorage.marketplaceOwner = _owner;
 
         // Number of all active devices
         myMarketplaceStorage.currentTrades = 0;
@@ -58,6 +57,14 @@ contract myMarketplace is Owned {
         return true;
     }
 
+    function closeMarketplace() public returns (bool) {
+        // Only the weeve factory is able to initialise a registry
+        require(msg.sender == weeveFactoryAddress);
+        require(myMarketplaceStorage.currentTrades == 0);
+        myMarketplaceStorage.marketplaceIsActive = false;
+        return true;
+    }
+
     // Posting a new trade offer to the marketplace by ID, price and amount
     function sell(string _tradeID, uint256 _price, uint256 _amount) public marketplaceIsActive {
         require(weeveMarketplace.sell(myMarketplaceStorage, _tradeID, _price, _amount));
@@ -69,7 +76,7 @@ contract myMarketplace is Owned {
     }
 
     // Withdrawing the acrued commission from the marketplace as the owner
-    function withdrawCommission(address _recipientAddress, uint256 _amountOfTokens) public marketplaceIsActive onlyOwner {
+    function withdrawCommission(address _recipientAddress, uint256 _amountOfTokens) public marketplaceIsActive onlyMarketplaceOwner {
         // Number of tokens that will be withdrawn must be smaller or equal to the balance of the commission
         require(_amountOfTokens <= myMarketplaceStorage.commissionBalance);
 
@@ -91,24 +98,24 @@ contract myMarketplace is Owned {
     }
 
     // Changeing the commission of this marketplace as the owner
-    function changeCommission(uint256 _commission) public marketplaceIsActive onlyOwner {
+    function changeCommission(uint256 _commission) public marketplaceIsActive onlyMarketplaceOwner {
         require(_commission >= 0 && _commission < 100);
         myMarketplaceStorage.commission = _commission;
     }
 
-    function addValidator(address _address) public marketplaceIsActive onlyOwner {
+    function addValidator(address _address) public marketplaceIsActive onlyMarketplaceOwner {
         myMarketplaceStorage.validators[_address].validatorAddress = _address;
     }
 
-    function removeValidator(address _address) public marketplaceIsActive onlyOwner {
+    function removeValidator(address _address) public marketplaceIsActive onlyMarketplaceOwner {
         delete myMarketplaceStorage.validators[_address];
     }
 
-    function addArbiter(address _address) public marketplaceIsActive onlyOwner {
+    function addArbiter(address _address) public marketplaceIsActive onlyMarketplaceOwner {
         myMarketplaceStorage.arbiters[_address].arbiterAddress = _address;
     }
 
-    function removeArbiter(address _address) public marketplaceIsActive onlyOwner {
+    function removeArbiter(address _address) public marketplaceIsActive onlyMarketplaceOwner {
         delete myMarketplaceStorage.arbiters[_address];
     }
     
@@ -126,6 +133,12 @@ contract myMarketplace is Owned {
         } else {
             return false;
         }
+    }
+
+    // Modifier: Checks whether the caller is the owner of this registry
+    modifier onlyMarketplaceOwner {
+        require(msg.sender == myMarketplaceStorage.marketplaceOwner);
+        _;
     }
 
     // Modifier: Checks whether an address is a validator
