@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 // The Owned contract has an owner address, and provides basic authorization control functions
 // Source: OpenZeppelin Framework

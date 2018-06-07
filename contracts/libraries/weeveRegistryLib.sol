@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 import "./SafeMath.sol";
 
@@ -179,7 +179,7 @@ library weeveRegistry {
     function deleteFromArray(RegistryStorage storage myRegistryStorage, address _address, string _value) internal {
         require(myRegistryStorage.devicesOfUser[_address].length > 0);
         for(uint i = 0; i < myRegistryStorage.devicesOfUser[_address].length; i++) {
-            if(keccak256(myRegistryStorage.devicesOfUser[_address][i]) == keccak256(_value)) {
+            if(keccak256(abi.encodePacked(myRegistryStorage.devicesOfUser[_address][i])) == keccak256(abi.encodePacked(_value))) {
                 if(i != myRegistryStorage.devicesOfUser[_address].length-1) {
                     myRegistryStorage.devicesOfUser[_address][i] = myRegistryStorage.devicesOfUser[_address][myRegistryStorage.devicesOfUser[_address].length-1];
                 }
