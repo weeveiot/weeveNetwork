@@ -2,7 +2,7 @@ pragma solidity ^0.4.24;
 
 import "./SafeMath.sol";
 
-// Basic ERC20 Interface 
+/// Basic ERC20 Interface 
 interface ERC20 {
     function totalSupply() external returns (uint);
     function balanceOf(address tokenOwner) external returns (uint balance);

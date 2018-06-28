@@ -17,43 +17,20 @@ interface ERC20 {
 interface weeveRegistry {
     function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) external returns (bool);
     function closeRegistry() external returns (bool);
-    function requestRegistration(string _deviceName, string _deviceID, bytes32[] _deviceMeta) external;
-    function approveRegistrationRequest(string _deviceID) external;
-    function unregister(string _deviceID) external;
-    function emergencyRefund(address _address, uint256 _numberOfTokens) external;
-    function getTotalStakeOfAddress(address _address) external returns (uint256 totalStake);
-    function getDeviceByID(string _deviceID) external returns (string deviceName, string deviceID, string hashOfDeviceData, address owner, uint256 stakedTokens, string registyState);
-    function getDeviceMetainformation1ByID(string _deviceID) external returns (string sensors, string dataType, string manufacturer, string identifier, string description, string product);
-    function getDeviceMetainformation2ByID(string _deviceID) external returns (string version, string serial, string cpu, string trustzone, string wifi);
-    function getDeviceIDFromArray(address _address, uint256 _devicePositionInArray) external returns (string deviceID);
     function getTotalDeviceCount() external returns (uint256 numberOfDevices);
-    function getDeviceCountOfUser(address _address) external returns (uint256 numberOfDevices);
-    function getStakePerRegistration() external returns (uint256 stakePerRegistry);
-    function setStakePerRegistration(uint256 _numberOfTokens) external;
-    function addValidator(address _address) external;
-    function removeValidator(address _address) external;
-    function addArbiter(address _address) external;
-    function removeArbiter(address _address)external;    
-    function checkValidatorStatus(address _address) external returns (bool status);
-    function checkArbiterStatus(address _address) external returns (bool status);
 }
 
 // Interface for our marketplaces
 interface weeveMarketplace {
     function initialize(string _name, uint256 _commission, address _owner) external returns (bool);
     function closeMarketplace() external returns (bool);
-    function sell(string _tradeID, uint256 _price, uint256 _amount) external;
-    function buy(string _tradeID) external;
-    function withdrawCommission(address _recipientAddress, uint256 _amountOfTokens) external;
-    function getTrade(string _tradeID) external returns(string tradeID, address seller, uint256 price, uint256 amount, bool paid);
     function getTotalTradeCount() external returns (uint256 numberOfCurrentTrades);
-    function changeCommission(uint256 _commission) external;
-    function addValidator(address _address) external;
-    function removeValidator(address _address) external;
-    function addArbiter(address _address) external;
-    function removeArbiter(address _address)external;    
-    function checkValidatorStatus(address _address) external returns (bool status);
-    function checkArbiterStatus(address _address) external returns (bool status);
+}
+
+// Interface for our voting scheme
+interface weeveVoting {  
+    function addWeeveContract(address _newContract) external returns (bool success);
+    function removeWeeveContract(address _obsoleteContract) external returns (bool success);
 }
 
 contract weeveFactory is Owned {
@@ -100,17 +77,24 @@ contract weeveFactory is Owned {
     // Our ERC20 token
     ERC20 public token;
 
+    // Our voting contract
+    weeveVoting public vote;
+
     // Tokens that need to be staked for each registry (soon to be dynamic)
     uint256 tokensPerRegistryCreation;
 
     // Tokens that need to be staked for each registry (soon to be dynamic)
     uint256 tokensPerMarketplaceCreation;
 
-    constructor(address _erc20Address) public {
+    constructor(address _erc20Address, address _votingAddress) public {
+        require(_erc20Address != address(0));
         require(_erc20Address != address(0));
         
         // Setting the address of our WEEV token contract
-        token = ERC20(_erc20Address);
+        token = ERC20(_erc20Address);        
+        
+        // Setting the address of our voting contract
+        vote = weeveVoting(_votingAddress);
 
         // weeve Registry code hash (placeholder)
         weeveRegistryHash = 0x0000000000000000000000000000000000000000000000000000000000000000;
@@ -167,6 +151,9 @@ contract weeveFactory is Owned {
         // Activating the new registry
         weeveRegistry newWeeveRegistry = weeveRegistry(newRegistry.registryAddress);
         require(newWeeveRegistry.initialize(_name, _stakePerRegistration, _stakePerArbiter, _stakePerValidator, msg.sender));
+
+        // Add the address to the voting contract
+        require(vote.addWeeveContract(newRegistry.registryAddress));
 
         // The new registry is now active
         newRegistry.active = true;
@@ -238,6 +225,8 @@ contract weeveFactory is Owned {
         require(theRegistry.closeRegistry());
         // Unstaking the remaining tokens
         require(unstakeTokens(allRegistries[_id].owner, allRegistries[_id].stakedTokens));
+        // Remove the address from the voting contract
+        require(vote.removeWeeveContract(allRegistries[_id].registryAddress));
         allRegistries[_id].stakedTokens = 0;
         allRegistries[_id].active = false;
     }
