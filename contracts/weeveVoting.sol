@@ -183,17 +183,19 @@ contract weeveVoting {
     }
 
     // Resolves a vote: calculated the endToken count for the payout of participants
-    function resolveVote(uint256 _pollID, uint256 _securityDeposit) external calledByWeeveContract(msg.sender) returns(bool votePassed) {
+    function resolveVote(uint256 _pollID) external calledByWeeveContract(msg.sender) returns(bool votePassed) {
         require(pollEnded(_pollID));
 
         // Adds the tokens of the ones who did not vote according what was the right decision to the ones who did not reveal their vote in time
         // Also adds the security deposit of the challenged entitiy if the vote passed
         if(isPassed(_pollID)) {
             pollMap[_pollID].endTokensFor = pollMap[_pollID].votesFor;
-            pollMap[_pollID].endTokensAgainst = pollMap[_pollID].votesAgainst.add(pollMap[_pollID].votesUnrevealed).add(_securityDeposit);
+            pollMap[_pollID].endTokensAgainst = pollMap[_pollID].votesAgainst.add(pollMap[_pollID].votesUnrevealed);
         } else {
-            pollMap[_pollID].endTokensAgainst = pollMap[_pollID].votesAgainst;
-            pollMap[_pollID].endTokensFor = pollMap[_pollID].votesFor.add(pollMap[_pollID].votesUnrevealed);
+            if(pollMap[_pollID].votesFor != pollMap[_pollID].votesAgainst) {
+                pollMap[_pollID].endTokensAgainst = pollMap[_pollID].votesAgainst;
+                pollMap[_pollID].endTokensFor = pollMap[_pollID].votesFor.add(pollMap[_pollID].votesUnrevealed);
+            }
         }
 
         pollMap[_pollID].isResolved = true;
@@ -208,18 +210,24 @@ contract weeveVoting {
         require(didReveal(_address, _pollID));
 
         uint256 rightOption = isPassed(_pollID) ? 1 : 0;
-        
-        // only users who voted for the winning option 
-        require(_voteOption == rightOption);
+    
+        if(!isPassed(_pollID) && pollMap[_pollID].endTokensAgainst == 0 && pollMap[_pollID].endTokensFor == 0) {
+            reward = _stakedTokens;
+            if(pollMap[_pollID].votesUnrevealed > 0 && (pollMap[_pollID].votesFor > 0 || pollMap[_pollID].votesAgainst > 0)) {
+                reward = reward.add((_stakedTokens.mul(pollMap[_pollID].votesUnrevealed)).div(pollMap[_pollID].votesFor.add(pollMap[_pollID].votesAgainst)));
+            }
+        } else {
+            // only users who voted for the winning option 
+            require(_voteOption == rightOption);
 
-        // calculcate the reward (their tokens plus their share of the tokens of the losing side)
-        reward = _stakedTokens;
-        if(isPassed(_pollID) && pollMap[_pollID].endTokensAgainst > 0) {
-            reward = reward.add((reward.mul(pollMap[_pollID].endTokensAgainst)).div(pollMap[_pollID].endTokensFor));
-        } else if(!isPassed(_pollID) && pollMap[_pollID].endTokensFor > 0) {
-            reward = reward.add((reward.mul(pollMap[_pollID].endTokensFor)).div(pollMap[_pollID].endTokensAgainst));
+            // calculcate the reward (their tokens plus their share of the tokens of the losing side)
+            reward = _stakedTokens;
+            if(isPassed(_pollID) && pollMap[_pollID].endTokensAgainst > 0) {
+                reward = reward.add((reward.mul(pollMap[_pollID].endTokensAgainst)).div(pollMap[_pollID].endTokensFor));
+            } else if(!isPassed(_pollID) && pollMap[_pollID].endTokensFor > 0) {
+                reward = reward.add((reward.mul(pollMap[_pollID].endTokensFor)).div(pollMap[_pollID].endTokensAgainst));
+            }
         }
-
         return reward;
     }
     
@@ -372,7 +380,7 @@ contract weeveVoting {
                     nodeID = dllMap[_voter].getPrev(nodeID);
                 }
                 // Return the insert point
-                return nodeID; 
+                return nodeID;  
             }
             // We did not find the insert point. Continue iterating backwards through the list
             nodeID = dllMap[_voter].getPrev(nodeID);

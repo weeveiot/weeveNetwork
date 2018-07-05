@@ -71,6 +71,7 @@ contract myRegistry {
     
     // Challenge a device
     function raiseChallenge(string _deviceID, uint256 _commitDuration, uint256 _revealDuration) public registryIsActive deviceExists(_deviceID) {
+        require(msg.sender != myRegistryStorage.devices[_deviceID].deviceOwner);
         uint256 voteID = weeveRegistry.raiseChallenge(myRegistryStorage, _deviceID, msg.sender, _commitDuration, _revealDuration);
         require(voteID > 0);
         emit challengeRaised(voteID, _deviceID);
@@ -99,11 +100,26 @@ contract myRegistry {
         require(weeveRegistry.claimRewardOfVote(myRegistryStorage, _voteID, msg.sender));
     }
 
-    // In case of programming errors or other bugs the owner is able to refund staked tokens to it's owner
+    // In case of programming errors or other bugs the owner is able to refund staked tokens from a registered device to its owner
     // This will be removed once the contract is proven to work correctly
-    function emergencyRefund(address _address) public onlyRegistryOwner {
+    function emergencyRefundRegistry(address _address) public onlyRegistryOwner {
         require(myRegistryStorage.totalStakedTokens[_address] > 0);
         myRegistryStorage.token.transfer(_address, myRegistryStorage.totalStakedTokens[_address]);
+    }
+
+    // In case of programming errors or other bugs the owner is able to refund staked tokens from a vote to its owner
+    // This will be removed once the contract is proven to work correctly
+    function emergencyRefundVote(address _address, uint256 _voteID) public onlyRegistryOwner {
+        bool foundVote = false;
+        uint256 i;
+        for(i = myRegistryStorage.votes.length-1; i >= 0; i--) {
+            if(myRegistryStorage.votes[i].voteID == _voteID) {
+                foundVote = true;
+                break;
+            }
+        }
+        require(foundVote && myRegistryStorage.votes[i].voteDetails[_address].stakedTokens > 0);
+        myRegistryStorage.token.transfer(_address, myRegistryStorage.votes[i].voteDetails[_address].stakedTokens);
     }
 
     // Returns the total staked tokens of an address
