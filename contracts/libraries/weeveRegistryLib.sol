@@ -13,12 +13,12 @@ interface ERC20 {
 }
 
 interface VotingContract {
-    function commitVote(uint _pollID, address _address, bytes32 _secretHash, uint _numTokens, uint _prevPollID) external returns (bool success);
-    function revealVote(uint _pollID, address _address, uint _voteOption, uint _salt) external returns (bool);
+    function commitVote(uint _voteID, address _address, bytes32 _secretHash, uint _numTokens, uint _prevPollID) external returns (bool success);
+    function revealVote(uint _voteID, address _address, uint _voteOption, uint _salt) external returns (bool);
     function startPoll(uint _voteQuorum, uint _commitDuration, uint _revealDuration) external returns (uint pollID);
-    function pollEnded(uint _pollID) external returns (bool ended);
-    function resolveVote(uint _pollID) external returns (bool votePassed);
-    function claimReward(uint256 _pollID, uint256 _voteOption, address _address, uint256 _stakedTokens) external returns (uint256 reward);
+    function pollEnded(uint _voteID) external returns (bool ended);
+    function resolveVote(uint _voteID) external returns (bool votePassed);
+    function claimReward(uint256 _voteID, uint256 _voteOption, address _address, uint256 _stakedTokens) external returns (uint256 reward);
 }
 
 library weeveRegistry {
@@ -128,7 +128,7 @@ library weeveRegistry {
         Vote[] votes;
     }
     
-    function initialize(RegistryStorage storage myRegistryStorage, string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public returns(bool){
+    function initialize(RegistryStorage storage myRegistryStorage, string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public returns (bool success){
         // Setting the name of the registry
         myRegistryStorage.registryName = _name;
 
@@ -157,7 +157,7 @@ library weeveRegistry {
     }
 
     // Request access to the registry
-    function requestRegistration(RegistryStorage storage myRegistryStorage, string _deviceName, string _deviceID, bytes32[] _deviceMeta, address _sender) public returns(bool){
+    function requestRegistration(RegistryStorage storage myRegistryStorage, string _deviceName, string _deviceID, bytes32[] _deviceMeta, address _sender) public returns (bool success){
         // Allocate new device
         Device memory newDevice;
         Metainformation memory newMetainformation;
@@ -195,7 +195,7 @@ library weeveRegistry {
     }
     
     // Validate a registry-request with enough values (currently just setting instead of checking)
-    function validateRegistration(RegistryStorage storage myRegistryStorage, string _deviceID, bytes32[] _deviceMeta) internal returns(bool) {
+    function validateRegistration(RegistryStorage storage myRegistryStorage, string _deviceID, bytes32[] _deviceMeta) internal returns (bool success) {
         myRegistryStorage.devices[_deviceID].metainformation.sensors = bytes32ToString(_deviceMeta[0]);
         myRegistryStorage.devices[_deviceID].metainformation.dataType = bytes32ToString(_deviceMeta[1]);
         myRegistryStorage.devices[_deviceID].metainformation.manufacturer = bytes32ToString(_deviceMeta[2]);
@@ -211,7 +211,7 @@ library weeveRegistry {
     }
 
     // Simulating the approval from a validator (through oraclize)    
-    function approveRegistrationRequest(RegistryStorage storage myRegistryStorage, string _deviceID) public returns(bool) {
+    function approveRegistrationRequest(RegistryStorage storage myRegistryStorage, string _deviceID) public returns (bool success) {
         require(myRegistryStorage.devices[_deviceID].stakedTokens == 0);
         require(stakeTokens(myRegistryStorage, myRegistryStorage.devices[_deviceID].deviceOwner, _deviceID, myRegistryStorage.tokenStakePerRegistration));
         myRegistryStorage.devices[_deviceID].state = "accepted";
@@ -220,7 +220,7 @@ library weeveRegistry {
     }
 
     // Unregistering your device
-    function unregister(RegistryStorage storage myRegistryStorage, address _sender, string _deviceID) public returns(bool) {
+    function unregister(RegistryStorage storage myRegistryStorage, address _sender, string _deviceID) public returns (bool) {
         require(keccak256(abi.encodePacked(myRegistryStorage.devices[_deviceID].state)) == keccak256(abi.encodePacked("accepted")));
         require(unstakeTokens(myRegistryStorage, _sender, _deviceID));
         delete myRegistryStorage.devices[_deviceID];
@@ -230,7 +230,7 @@ library weeveRegistry {
     }
     
     // Challenge a device
-    function raiseChallenge(RegistryStorage storage myRegistryStorage, string _deviceID, address _sender, uint256 _durationCommit, uint256 _durationReveal) public returns(uint256) {
+    function raiseChallenge(RegistryStorage storage myRegistryStorage, string _deviceID, address _sender, uint256 _durationCommit, uint256 _durationReveal) public returns (uint256 voteNumber) {
         require(myRegistryStorage.votes.length == 0 || myRegistryStorage.votes[myRegistryStorage.votes.length-1].isResolved);
 
         Vote memory newVote = Vote({
@@ -260,38 +260,31 @@ library weeveRegistry {
         myRegistryStorage.votes[myRegistryStorage.votes.length-1].stakedTokens = myRegistryStorage.votes[myRegistryStorage.votes.length-1].stakedTokens.add(numberOfTokens);
         myRegistryStorage.votes[myRegistryStorage.votes.length-1].voteDetails[newVote.challengee].stakedTokens = numberOfTokens;
 
-        return newVote.voteID;
+        return myRegistryStorage.votes.length-1;
     }
     
     // Vote on a challenge
-    function voteOnChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteID, address _sender, uint256 _numberOfTokens, bytes32 _voteHash) public returns(bool) {
-        uint256 currentVoteID = myRegistryStorage.votes.length-1;
-        require(myRegistryStorage.votes[currentVoteID].voteID == _voteID, "Not the current vote.");
-
+    function voteOnChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender, uint256 _numberOfTokens, bytes32 _voteHash) public returns (bool success) {
         myRegistryStorage.token.transferFrom(_sender, address(this), _numberOfTokens);
-        myRegistryStorage.votes[currentVoteID].stakedTokens = myRegistryStorage.votes[currentVoteID].stakedTokens.add(_numberOfTokens);
-        myRegistryStorage.votes[currentVoteID].voteDetails[_sender].stakedTokens = _numberOfTokens;
+        myRegistryStorage.votes[_voteNumber].stakedTokens = myRegistryStorage.votes[_voteNumber].stakedTokens.add(_numberOfTokens);
+        myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens = _numberOfTokens;
 
-        require(myRegistryStorage.vote.commitVote(_voteID, _sender, _voteHash, _numberOfTokens, 0), "Failed to commit the vote.");
+        require(myRegistryStorage.vote.commitVote(myRegistryStorage.votes[_voteNumber].voteID, _sender, _voteHash, _numberOfTokens, 0), "Failed to commit the vote.");
         return true;
     }
 
     // Reveal a vote on a challenge
-    function revealVote(RegistryStorage storage myRegistryStorage, uint256 _voteID, address _sender, uint256 _voteOption, uint256 _voteSalt) public returns(bool) {
-        uint256 currentVoteID = myRegistryStorage.votes.length-1;
-        require(myRegistryStorage.votes[currentVoteID].voteID == _voteID);
-        require(myRegistryStorage.vote.revealVote(_voteID, _sender, _voteOption, _voteSalt));
-        myRegistryStorage.votes[currentVoteID].voteDetails[_sender].voteChoice = _voteOption;
+    function revealVote(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender, uint256 _voteOption, uint256 _voteSalt) public returns (bool success) {
+        require(myRegistryStorage.vote.revealVote(myRegistryStorage.votes[_voteNumber].voteID, _sender, _voteOption, _voteSalt));
+        myRegistryStorage.votes[_voteNumber].voteDetails[_sender].voteChoice = _voteOption;
         return true;
     }
         
     // Resolve a vote after the reveal-phase is over
-    function resolveChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteID) public returns(bool) {
-        uint256 currentVoteID = myRegistryStorage.votes.length-1;
-        Vote storage currentVote = myRegistryStorage.votes[myRegistryStorage.votes.length-1];
-        require(myRegistryStorage.votes[currentVoteID].voteID == _voteID);
-        bool votePassed = myRegistryStorage.vote.resolveVote(_voteID);
-        myRegistryStorage.votes[currentVoteID].isResolved = true;
+    function resolveChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteNumber) public returns (bool votePassed) {
+        Vote storage currentVote = myRegistryStorage.votes[_voteNumber];
+        votePassed = myRegistryStorage.vote.resolveVote(currentVote.voteID);
+        currentVote.isResolved = true;
 
         if(votePassed) {
             currentVote.stakedTokens = currentVote.stakedTokens.add(myRegistryStorage.devices[currentVote.deviceID].stakedTokens);
@@ -302,39 +295,30 @@ library weeveRegistry {
         } else {
             myRegistryStorage.devices[currentVote.deviceID].state = "accepted";
         }
-        return true;
+        return votePassed;
     }
     
     // Claim the reward of a finished vote
-    function claimRewardOfVote(RegistryStorage storage myRegistryStorage, uint256 _voteID, address _sender) public returns(bool) {
-        bool foundVote = false;
-        uint256 i;
-        for(i = myRegistryStorage.votes.length-1; i >= 0; i--) {
-            if(myRegistryStorage.votes[i].voteID == _voteID) {
-                foundVote = true;
-                break;
-            }
+    function claimRewardOfVote(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender) public returns (bool success) {
+        if(!myRegistryStorage.votes[_voteNumber].isResolved) {
+            require(resolveChallenge(myRegistryStorage, _voteNumber));
         }
-        require(foundVote);
-        if(!myRegistryStorage.votes[i].isResolved) {
-            require(resolveChallenge(myRegistryStorage, _voteID));
-        }
-        require(myRegistryStorage.votes[i].voteDetails[_sender].stakedTokens > 0);
+        require(myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens > 0);
         
-        uint256 reward = myRegistryStorage.vote.claimReward(_voteID, myRegistryStorage.votes[i].voteDetails[_sender].voteChoice, _sender, myRegistryStorage.votes[i].voteDetails[_sender].stakedTokens);
-        require(reward >= myRegistryStorage.votes[i].voteDetails[_sender].stakedTokens);
-        if(_sender == myRegistryStorage.devices[myRegistryStorage.votes[i].deviceID].deviceOwner) {
-            myRegistryStorage.token.transfer(_sender, reward.sub(myRegistryStorage.devices[myRegistryStorage.votes[i].deviceID].stakedTokens));
+        uint256 reward = myRegistryStorage.vote.claimReward(myRegistryStorage.votes[_voteNumber].voteID, myRegistryStorage.votes[_voteNumber].voteDetails[_sender].voteChoice, _sender, myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens);
+        require(reward >= myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens);
+        if(_sender == myRegistryStorage.devices[myRegistryStorage.votes[_voteNumber].deviceID].deviceOwner) {
+            myRegistryStorage.token.transfer(_sender, reward.sub(myRegistryStorage.devices[myRegistryStorage.votes[_voteNumber].deviceID].stakedTokens));
         } else {
             myRegistryStorage.token.transfer(_sender, reward);
         }
-        myRegistryStorage.votes[i].stakedTokens = myRegistryStorage.votes[i].stakedTokens.sub(reward);
-        myRegistryStorage.votes[i].voteDetails[_sender].stakedTokens = 0;
+        myRegistryStorage.votes[_voteNumber].stakedTokens = myRegistryStorage.votes[_voteNumber].stakedTokens.sub(reward);
+        myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens = 0;
         return true;
     }
 
     // Stake tokens through our ERC20 contract
-    function stakeTokens(RegistryStorage storage myRegistryStorage, address _address, string _deviceID, uint256 _numberOfTokens) internal returns(bool) {
+    function stakeTokens(RegistryStorage storage myRegistryStorage, address _address, string _deviceID, uint256 _numberOfTokens) internal returns (bool success) {
         myRegistryStorage.token.transferFrom(_address, address(this), _numberOfTokens);
         myRegistryStorage.devices[_deviceID].stakedTokens = myRegistryStorage.devices[_deviceID].stakedTokens.add(_numberOfTokens);
         myRegistryStorage.totalStakedTokens[_address] = myRegistryStorage.totalStakedTokens[_address].add(_numberOfTokens);
@@ -342,7 +326,7 @@ library weeveRegistry {
     }
 
     // Unstake tokens through our ERC20 contract
-    function unstakeTokens(RegistryStorage storage myRegistryStorage, address _address, string _deviceID) internal returns(bool) {
+    function unstakeTokens(RegistryStorage storage myRegistryStorage, address _address, string _deviceID) internal returns (bool success) {
         require(myRegistryStorage.devices[_deviceID].stakedTokens > 0);
         require(myRegistryStorage.token.transfer(_address, myRegistryStorage.devices[_deviceID].stakedTokens));
         myRegistryStorage.totalStakedTokens[_address] = myRegistryStorage.totalStakedTokens[_address].sub(myRegistryStorage.devices[_deviceID].stakedTokens);

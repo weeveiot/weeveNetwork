@@ -9,9 +9,9 @@ contract myRegistry {
     event deviceRegistration(string indexed deviceID, address indexed owner);
     event deviceAccepted(string indexed deviceID, address indexed owner);
     event deviceUnregistered(string indexed deviceID, address indexed owner);
-    event challengeRaised(uint indexed voteID, string indexed deviceID);
-    event votedOnChallenge(uint indexed voteID, address indexed voter, bool vote, uint256 numberOfTokens);
-    event challengeResolved(uint indexed voteID, string indexed deviceID, bool votePassed, uint256 numberOfTokensFor, uint256 numberOfTokensAgainst);
+    event challengeRaised(uint indexed voteNumber, string indexed deviceID);
+    event votedOnChallenge(uint indexed voteNumber, address indexed voter, bool vote, uint256 numberOfTokens);
+    event challengeResolved(uint indexed voteNumber, string indexed deviceID, bool votePassed);
 
     // General storage for the Registry
     weeveRegistry.RegistryStorage public myRegistryStorage;
@@ -31,7 +31,7 @@ contract myRegistry {
         myRegistryStorage.weeveVotingAddress = 0x0000000000000000000000000000000000000000;
     }
 
-    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public onlyWeeveFactory returns(bool){
+    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public onlyWeeveFactory returns (bool success){
         require(weeveRegistry.initialize(myRegistryStorage, _name, _stakePerRegistration, _stakePerArbiter, _stakePerValidator, _owner));
         return true;
     }
@@ -41,7 +41,7 @@ contract myRegistry {
         myRegistryStorage.vote = VotingContract(_address);
     }
 
-    function closeRegistry() public onlyWeeveFactory returns(bool) {
+    function closeRegistry() public onlyWeeveFactory returns (bool success) {
         // Only the weeve factory is able to initialise a registry
         require(myRegistryStorage.activeDevices == 0);
         myRegistryStorage.registryIsActive = false;
@@ -72,32 +72,31 @@ contract myRegistry {
     // Challenge a device
     function raiseChallenge(string _deviceID, uint256 _commitDuration, uint256 _revealDuration) public registryIsActive deviceExists(_deviceID) {
         require(msg.sender != myRegistryStorage.devices[_deviceID].deviceOwner);
-        uint256 voteID = weeveRegistry.raiseChallenge(myRegistryStorage, _deviceID, msg.sender, _commitDuration, _revealDuration);
-        require(voteID > 0);
-        emit challengeRaised(voteID, _deviceID);
+        uint256 voteNumber = weeveRegistry.raiseChallenge(myRegistryStorage, _deviceID, msg.sender, _commitDuration, _revealDuration);
+        emit challengeRaised(voteNumber, _deviceID);
     }
         
     // Vote on a Challenge
-    function voteOnChallenge(uint256 _voteID, uint256 _numberOfTokens, bytes32 _voteHash) public registryIsActive hasEnoughTokensAllowed(msg.sender, _numberOfTokens) {
-        require(weeveRegistry.voteOnChallenge(myRegistryStorage, _voteID, msg.sender, _numberOfTokens, _voteHash));
+    function voteOnChallenge(uint256 _voteNumber, uint256 _numberOfTokens, bytes32 _voteHash) public registryIsActive hasEnoughTokensAllowed(msg.sender, _numberOfTokens) {
+        require(weeveRegistry.voteOnChallenge(myRegistryStorage, _voteNumber, msg.sender, _numberOfTokens, _voteHash));
     }
 
     // Reveal a vote on a challenge
-    function revealVote(uint256 _voteID, uint256 _voteOption, uint256 _voteSalt) public {
-        require(weeveRegistry.revealVote(myRegistryStorage, _voteID, msg.sender, _voteOption, _voteSalt));
-        //bool voteOption = (_voteOption != 0);
-        //emit votedOnChallenge(_voteID, msg.sender, voteOption, myRegistryStorage.votes[_voteID].voteDetails[msg.sender].stakedTokens);
+    function revealVote(uint256 _voteNumber, uint256 _voteOption, uint256 _voteSalt) public {
+        require(weeveRegistry.revealVote(myRegistryStorage, _voteNumber, msg.sender, _voteOption, _voteSalt));
+        bool voteOptionBool = (_voteOption != 0);
+        emit votedOnChallenge(_voteNumber, msg.sender, voteOptionBool, myRegistryStorage.votes[_voteNumber].voteDetails[msg.sender].stakedTokens);
     }
     
     // Resolve a vote after the reveal-phase is over
-    function resolveChallenge(uint256 _voteID) public returns(bool) {
-        require(weeveRegistry.resolveChallenge(myRegistryStorage, _voteID));
-        //emit challengeResolved(_voteID, myRegistryStorage.votes[_voteID].deviceID, myRegistryStorage.votes[_voteID].votePassed, myRegistryStorage.votes[_voteID].votesFor, myRegistryStorage.votes[_voteID].votesAgainst);
+    function resolveChallenge(uint256 _voteNumber) public {
+        bool votePassed = weeveRegistry.resolveChallenge(myRegistryStorage, _voteNumber);
+        emit challengeResolved(_voteNumber, myRegistryStorage.votes[_voteNumber].deviceID, votePassed);
     }
     
     // Claim reward of a vote
-    function claimRewardOfVote(uint256 _voteID) public {
-        require(weeveRegistry.claimRewardOfVote(myRegistryStorage, _voteID, msg.sender));
+    function claimRewardOfVote(uint256 _voteNumber) public {
+        require(weeveRegistry.claimRewardOfVote(myRegistryStorage, _voteNumber, msg.sender));
     }
 
     // In case of programming errors or other bugs the owner is able to refund staked tokens from a registered device to its owner
@@ -109,17 +108,9 @@ contract myRegistry {
 
     // In case of programming errors or other bugs the owner is able to refund staked tokens from a vote to its owner
     // This will be removed once the contract is proven to work correctly
-    function emergencyRefundVote(address _address, uint256 _voteID) public onlyRegistryOwner {
-        bool foundVote = false;
-        uint256 i;
-        for(i = myRegistryStorage.votes.length-1; i >= 0; i--) {
-            if(myRegistryStorage.votes[i].voteID == _voteID) {
-                foundVote = true;
-                break;
-            }
-        }
-        require(foundVote && myRegistryStorage.votes[i].voteDetails[_address].stakedTokens > 0);
-        myRegistryStorage.token.transfer(_address, myRegistryStorage.votes[i].voteDetails[_address].stakedTokens);
+    function emergencyRefundVote(address _address, uint256 _voteNumber) public onlyRegistryOwner {
+        require(myRegistryStorage.votes[_voteNumber].voteDetails[_address].stakedTokens > 0);
+        myRegistryStorage.token.transfer(_address, myRegistryStorage.votes[_voteNumber].voteDetails[_address].stakedTokens);
     }
 
     // Returns the total staked tokens of an address
@@ -129,17 +120,17 @@ contract myRegistry {
     }
    
     // Returns the basic information of a device by its ID
-    function getDeviceByID(string _deviceID) public view isOwnerOfDevice(_deviceID) deviceExists(_deviceID) returns (string deviceName, string deviceID, bytes32 hashOfDeviceData, address owner, uint256 stakedTokens, string registyState) {
+    function getDeviceByID(string _deviceID) public view deviceExists(_deviceID) returns (string deviceName, string deviceID, bytes32 hashOfDeviceData, address owner, uint256 stakedTokens, string registyState) {
         return (myRegistryStorage.devices[_deviceID].deviceName, myRegistryStorage.devices[_deviceID].deviceID, myRegistryStorage.devices[_deviceID].hashOfDeviceData, myRegistryStorage.devices[_deviceID].deviceOwner, myRegistryStorage.devices[_deviceID].stakedTokens, myRegistryStorage.devices[_deviceID].state);
     }
 
     // Returns the first part of the metainformation of a device by its ID
-    function getDeviceMetainformation1ByID(string _deviceID) public view isOwnerOfDevice(_deviceID) deviceExists(_deviceID) returns (string sensors, string dataType, string manufacturer, string identifier, string description, string product) {
+    function getDeviceMetainformation1ByID(string _deviceID) public view deviceExists(_deviceID) returns (string sensors, string dataType, string manufacturer, string identifier, string description, string product) {
         return (myRegistryStorage.devices[_deviceID].metainformation.sensors, myRegistryStorage.devices[_deviceID].metainformation.dataType, myRegistryStorage.devices[_deviceID].metainformation.manufacturer, myRegistryStorage.devices[_deviceID].metainformation.identifier, myRegistryStorage.devices[_deviceID].metainformation.description, myRegistryStorage.devices[_deviceID].metainformation.product);
     }
 
     // Returns the second part of the metainformation of a device by its ID
-    function getDeviceMetainformation2ByID(string _deviceID) public view isOwnerOfDevice(_deviceID) deviceExists(_deviceID) returns (string version, string serial, string cpu, string trustzone, string wifi) {
+    function getDeviceMetainformation2ByID(string _deviceID) public view deviceExists(_deviceID) returns (string version, string serial, string cpu, string trustzone, string wifi) {
         return (myRegistryStorage.devices[_deviceID].metainformation.version, myRegistryStorage.devices[_deviceID].metainformation.serial, myRegistryStorage.devices[_deviceID].metainformation.cpu, myRegistryStorage.devices[_deviceID].metainformation.trustzone, myRegistryStorage.devices[_deviceID].metainformation.wifi);
     }
 
