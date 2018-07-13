@@ -230,8 +230,10 @@ library weeveRegistry {
     
     // Challenge a device
     function raiseChallenge(RegistryStorage storage myRegistryStorage, string _deviceID, address _sender, uint256 _durationCommit, uint256 _durationReveal) public returns (uint256 voteNumber) {
+        // Either it's the first device challenge or the current one has to be resolved (only one vote at a time)
         require(myRegistryStorage.votes.length == 0 || myRegistryStorage.votes[myRegistryStorage.votes.length-1].isResolved);
 
+        // Create a new vote object
         Vote memory newVote = Vote({
             voteID: myRegistryStorage.vote.startPoll(50, _durationCommit, _durationReveal),
             deviceID: _deviceID,
@@ -240,9 +242,14 @@ library weeveRegistry {
             stakedTokens: 0,
             isResolved: false
         });
+
+        // Push vote object into the general vote array
         myRegistryStorage.votes.push(newVote);
+
+        // Marking the device as challenged
         myRegistryStorage.devices[_deviceID].state = "challenged";
         
+        // Automatic voting of the owner and the challenger
         uint256 challengerChoice = 1;
         uint256 challengeeChoice = 0;
         uint256 salt = 0;
@@ -264,16 +271,19 @@ library weeveRegistry {
 
     // Vote on a challenge
     function voteOnChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender, uint256 _numberOfTokens, bytes32 _voteHash) public returns (bool success) {
+        // Transfer the amount of tokens of this vote to this contract
         myRegistryStorage.token.transferFrom(_sender, address(this), _numberOfTokens);
         myRegistryStorage.votes[_voteNumber].stakedTokens = myRegistryStorage.votes[_voteNumber].stakedTokens.add(_numberOfTokens);
         myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens = _numberOfTokens;
 
+        // Commiting the vote through the voting-contract
         require(myRegistryStorage.vote.commitVote(myRegistryStorage.votes[_voteNumber].voteID, _sender, _voteHash, _numberOfTokens, 0), "Failed to commit the vote.");
         return true;
     }
 
     // Reveal a vote on a challenge
     function revealVote(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender, uint256 _voteOption, uint256 _voteSalt) public returns (bool success) {
+        // Revealing the vote through the voting-contract
         require(myRegistryStorage.vote.revealVote(myRegistryStorage.votes[_voteNumber].voteID, _sender, _voteOption, _voteSalt));
         myRegistryStorage.votes[_voteNumber].voteDetails[_sender].voteChoice = _voteOption;
         return true;
@@ -281,17 +291,23 @@ library weeveRegistry {
 
     // Resolve a vote after the reveal-phase is over
     function resolveChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteNumber) public returns (bool votePassed) {
+        // Getting the vote object
         Vote storage currentVote = myRegistryStorage.votes[_voteNumber];
+        // Resolving the vote through the voting-contract      
         votePassed = myRegistryStorage.vote.resolveVote(currentVote.voteID);
+        // Marking the vote as resolved
         currentVote.isResolved = true;
 
         if(votePassed) {
+            // If the vote passed add the staked tokens of the device to the tokens of this vote
             currentVote.stakedTokens = currentVote.stakedTokens.add(myRegistryStorage.devices[currentVote.deviceID].stakedTokens);
+            // Removing the device from this registry
             myRegistryStorage.devices[currentVote.deviceID].state = "rejected";
             myRegistryStorage.totalStakedTokens[currentVote.challengee] = myRegistryStorage.totalStakedTokens[currentVote.challengee].sub(myRegistryStorage.devices[currentVote.deviceID].stakedTokens);
             myRegistryStorage.devices[currentVote.deviceID].stakedTokens = 0;
             myRegistryStorage.activeDevices = myRegistryStorage.activeDevices.sub(1);
         } else {
+            // If the vote didn't pass the challenged-flag will be reset
             myRegistryStorage.devices[currentVote.deviceID].state = "accepted";
         }
         return votePassed;
@@ -299,18 +315,28 @@ library weeveRegistry {
 
     // Claim the reward of a finished vote
     function claimRewardOfVote(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender) public returns (bool success) {
+        // If the vote is not already resolved it will be done here automatically
         if(!myRegistryStorage.votes[_voteNumber].isResolved) {
             require(resolveChallenge(myRegistryStorage, _voteNumber));
         }
+        // Only participants of the vote are able to call this function
         require(myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens > 0);
-        
+
+        // Getting the calculated reward of this vote from the voting-contract
         uint256 reward = myRegistryStorage.vote.claimReward(myRegistryStorage.votes[_voteNumber].voteID, myRegistryStorage.votes[_voteNumber].voteDetails[_sender].voteChoice, _sender, myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens);
+        // Amount of rewarded tokens have to be at least equal to the amount that has been voted with
+        // Means: Only the winning side is able to claim a reward
         require(reward >= myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens);
+
+        // Checking whether the claiming person is the owner
+        // If that is the case, the stake of the device will not be transferred 
+        // (will remain as the stake since the challenge failed)
         if(_sender == myRegistryStorage.devices[myRegistryStorage.votes[_voteNumber].deviceID].deviceOwner) {
             myRegistryStorage.token.transfer(_sender, reward.sub(myRegistryStorage.devices[myRegistryStorage.votes[_voteNumber].deviceID].stakedTokens));
         } else {
             myRegistryStorage.token.transfer(_sender, reward);
         }
+        
         myRegistryStorage.votes[_voteNumber].stakedTokens = myRegistryStorage.votes[_voteNumber].stakedTokens.sub(reward);
         myRegistryStorage.votes[_voteNumber].voteDetails[_sender].stakedTokens = 0;
         return true;
