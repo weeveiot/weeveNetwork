@@ -10,7 +10,7 @@ contract myMarketplace {
     weeveMarketplace.MarketplaceStorage public myMarketplaceStorage;
 
     // Address of the weeve Factory
-    address public weeveFactoryAddress = 0x0000000000000000000000000000000000000000;
+    address public weeveNetworkAddress = 0x0000000000000000000000000000000000000000;
 
     // Address of the WEEV token
     address public weeveTokenAddress = 0x0000000000000000000000000000000000000000;
@@ -24,10 +24,7 @@ contract myMarketplace {
         myMarketplaceStorage.marketplaceIsActive = false;
     }
 
-    function initialize(string _name, uint256 _commission, address _owner) public returns(bool){
-        // Only the weeve factory is able to initialise a marketplace
-        require(msg.sender == weeveFactoryAddress);
-
+    function initialize(string _name, uint256 _commission, address _owner) public onlyWeeveNetwork returns (bool success){
         // Setting the name of the marketplace
         marketplaceName = _name;
 
@@ -57,10 +54,13 @@ contract myMarketplace {
         return true;
     }
 
-    function closeMarketplace() public returns (bool) {
-        // Only the weeve factory is able to initialise a registry
-        require(msg.sender == weeveFactoryAddress);
+    function closeMarketplace() public onlyWeeveNetwork returns (bool success) {
         require(myMarketplaceStorage.currentTrades == 0);
+        myMarketplaceStorage.marketplaceIsActive = false;
+        return true;
+    }
+
+    function deactivateMarketplace() public onlyWeeveNetwork returns (bool success) {
         myMarketplaceStorage.marketplaceIsActive = false;
         return true;
     }
@@ -88,7 +88,7 @@ contract myMarketplace {
     }
 
     // Returns the trade information
-    function getTrade(string _tradeID) public view returns(string tradeID, address seller, uint256 price, uint256 amount, bool paid) {
+    function getTrade(string _tradeID) public view returns (string tradeID, address seller, uint256 price, uint256 amount, bool paid) {
         return(myMarketplaceStorage.trades[_tradeID].tradeID, myMarketplaceStorage.trades[_tradeID].seller, myMarketplaceStorage.trades[_tradeID].price, myMarketplaceStorage.trades[_tradeID].amount, myMarketplaceStorage.trades[_tradeID].paid);
     }
 
@@ -133,6 +133,12 @@ contract myMarketplace {
         } else {
             return false;
         }
+    }
+
+    // Modifier: Checks whether the caller is an official weeve factory contract
+    modifier onlyWeeveNetwork {
+        require(msg.sender == weeveNetworkAddress);
+        _;
     }
 
     // Modifier: Checks whether the caller is the owner of this registry

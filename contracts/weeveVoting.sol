@@ -6,7 +6,6 @@ import "./libraries/SafeMath.sol";
 
 // Modified version of the PLCR voting scheme by Mike Goldin (ConsenSys)
 // https://github.com/ConsenSys/PLCRVoting
-
 contract weeveVoting {
 
     using AttributeStore for AttributeStore.Data;
@@ -29,7 +28,7 @@ contract weeveVoting {
     }
 
     // address of the weeve Factory
-    address public weeveFactoryAddress = 0x0000000000000000000000000000000000000000;
+    address public weeveNetworkAddress = 0x0000000000000000000000000000000000000000;
     
     // maps the addresses of contracts that are allowed to call this contracts functions
     mapping (address => bool) weeveContracts;
@@ -49,18 +48,21 @@ contract weeveVoting {
 
     constructor() public {
         pollNonce = INITIAL_POLL_NONCE;
+        weeveContracts[weeveNetworkAddress] = true;
     }
 
     // Adding a new contracts address that will be allowed to use this contract    
-    function addWeeveContract(address _newContract) public {
-        require(msg.sender == weeveFactoryAddress);
+    function addWeeveContract(address _newContract) public returns (bool success) {
+        require(msg.sender == weeveNetworkAddress);
         weeveContracts[_newContract] = true;
+        return true;
     }
     
     // Removing a contracts address that won't be allowed to use this contract anymore
-    function removeWeeveContract(address _obsoleteContract) public {
-        require(msg.sender == weeveFactoryAddress);
+    function removeWeeveContract(address _obsoleteContract) public returns (bool success) {
+        require(msg.sender == weeveNetworkAddress);
         weeveContracts[_obsoleteContract] = false;
+        return true;
     }
 
     // Unlocks tokens locked in unrevealed vote where poll has ended
@@ -117,7 +119,7 @@ contract weeveVoting {
     }
 
     // Commits votes using hashes of choices and secret salts to conceal votes until reveal
-    function commitVotes(uint[] _pollIDs, address _address, bytes32[] _secretHashes, uint[] _numsTokens, uint[] _prevPollIDs) external calledByWeeveContract(msg.sender) returns(bool) {
+    function commitVotes(uint[] _pollIDs, address _address, bytes32[] _secretHashes, uint[] _numsTokens, uint[] _prevPollIDs) external calledByWeeveContract(msg.sender) returns (bool) {
         // make sure the array lengths are all the same
         require(_pollIDs.length == _secretHashes.length);
         require(_pollIDs.length == _numsTokens.length);
@@ -140,7 +142,7 @@ contract weeveVoting {
     }
 
     // Reveals vote with choice and secret salt used in generating commitHash to attribute committed tokens
-    function revealVote(uint256 _pollID, address _address, uint256 _voteOption, uint256 _salt) public calledByWeeveContract(msg.sender) returns(bool) {
+    function revealVote(uint256 _pollID, address _address, uint256 _voteOption, uint256 _salt) public calledByWeeveContract(msg.sender) returns (bool) {
         // Make sure the reveal period is active
         require(revealPeriodActive(_pollID));
         require(pollMap[_pollID].didCommit[_address]);
@@ -169,7 +171,7 @@ contract weeveVoting {
     }
 
     // Reveals multiple votes with choices and secret salts used in generating commitHashes to attribute committed tokens
-    function revealVotes(uint[] _pollIDs, address _address, uint[] _voteOptions, uint[] _salts) external calledByWeeveContract(msg.sender) returns(bool) {
+    function revealVotes(uint[] _pollIDs, address _address, uint[] _voteOptions, uint[] _salts) external calledByWeeveContract(msg.sender) returns (bool) {
         // make sure the array lengths are all the same
         require(_pollIDs.length == _voteOptions.length);
         require(_pollIDs.length == _salts.length);
@@ -183,7 +185,7 @@ contract weeveVoting {
     }
 
     // Resolves a vote: calculated the endToken count for the payout of participants
-    function resolveVote(uint256 _pollID) external calledByWeeveContract(msg.sender) returns(bool votePassed) {
+    function resolveVote(uint256 _pollID) external calledByWeeveContract(msg.sender) returns (bool votePassed) {
         require(pollEnded(_pollID));
 
         // Adds the tokens of the ones who did not vote according what was the right decision to the ones who did not reveal their vote in time
@@ -204,7 +206,7 @@ contract weeveVoting {
     }
     
     // Allowing users who voted according to what the right decision was to claim their "reward" after the vote ended
-    function claimReward(uint256 _pollID, uint256 _voteOption, address _address, uint256 _stakedTokens) public view calledByWeeveContract(msg.sender) returns(uint256 reward) {
+    function claimReward(uint256 _pollID, uint256 _voteOption, address _address, uint256 _stakedTokens) public view calledByWeeveContract(msg.sender) returns (uint256 reward) {
         // vote needs to be resolved and only users who revealed their vote
         require(pollMap[_pollID].isResolved);
         require(didReveal(_address, _pollID));

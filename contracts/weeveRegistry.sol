@@ -22,7 +22,7 @@ contract myRegistry {
         myRegistryStorage.registryIsActive = false;
         
         // Address of the weeve Factory
-        myRegistryStorage.weeveFactoryAddress = 0x0000000000000000000000000000000000000000;
+        myRegistryStorage.weeveNetworkAddress = 0x0000000000000000000000000000000000000000;
     
         // Address of the WEEV token
         myRegistryStorage.weeveTokenAddress = 0x0000000000000000000000000000000000000000;
@@ -31,7 +31,7 @@ contract myRegistry {
         myRegistryStorage.weeveVotingAddress = 0x0000000000000000000000000000000000000000;
     }
 
-    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public onlyWeeveFactory returns (bool success){
+    function initialize(string _name, uint256 _stakePerRegistration, uint256 _stakePerArbiter, uint256 _stakePerValidator, address _owner) public onlyWeeveNetwork returns (bool success){
         require(weeveRegistry.initialize(myRegistryStorage, _name, _stakePerRegistration, _stakePerArbiter, _stakePerValidator, _owner));
         return true;
     }
@@ -41,9 +41,13 @@ contract myRegistry {
         myRegistryStorage.vote = VotingContract(_address);
     }
 
-    function closeRegistry() public onlyWeeveFactory returns (bool success) {
-        // Only the weeve factory is able to initialise a registry
+    function closeRegistry() public onlyWeeveNetwork returns (bool success) {
         require(myRegistryStorage.activeDevices == 0);
+        myRegistryStorage.registryIsActive = false;
+        return true;
+    }
+
+    function deactivateRegisty() public onlyWeeveNetwork returns (bool success) {
         myRegistryStorage.registryIsActive = false;
         return true;
     }
@@ -64,7 +68,7 @@ contract myRegistry {
     }
     
     // Unregistering your device
-    function unregister(string _deviceID) public registryIsActive isOwnerOfDevice(_deviceID) deviceExists(_deviceID) {
+    function unregister(string _deviceID) public isOwnerOfDevice(_deviceID) deviceExists(_deviceID) {
         require(weeveRegistry.unregister(myRegistryStorage, msg.sender, _deviceID));
         emit deviceUnregistered(_deviceID, msg.sender);
     }
@@ -77,7 +81,7 @@ contract myRegistry {
     }
         
     // Vote on a Challenge
-    function voteOnChallenge(uint256 _voteNumber, uint256 _numberOfTokens, bytes32 _voteHash) public registryIsActive hasEnoughTokensAllowed(msg.sender, _numberOfTokens) {
+    function voteOnChallenge(uint256 _voteNumber, uint256 _numberOfTokens, bytes32 _voteHash) public hasEnoughTokensAllowed(msg.sender, _numberOfTokens) {
         require(weeveRegistry.voteOnChallenge(myRegistryStorage, _voteNumber, msg.sender, _numberOfTokens, _voteHash));
     }
 
@@ -114,7 +118,7 @@ contract myRegistry {
     }
 
     // Returns the total staked tokens of an address
-    function getTotalStakeOfAddress(address _address) public view returns (uint256 totalStake){
+    function getTotalStakeOfAddress(address _address) public view returns (uint256 totalStake) {
         require(_address == msg.sender || msg.sender == myRegistryStorage.registryOwner);
         return myRegistryStorage.totalStakedTokens[_address];
     }
@@ -180,8 +184,8 @@ contract myRegistry {
     }
     
     // Modifier: Checks whether the caller is an official weeve factory contract
-    modifier onlyWeeveFactory {
-        require(msg.sender == myRegistryStorage.weeveFactoryAddress);
+    modifier onlyWeeveNetwork {
+        require(msg.sender == myRegistryStorage.weeveNetworkAddress);
         _;
     }
     

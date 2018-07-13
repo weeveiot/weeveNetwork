@@ -16,7 +16,6 @@ interface VotingContract {
     function commitVote(uint _voteID, address _address, bytes32 _secretHash, uint _numTokens, uint _prevPollID) external returns (bool success);
     function revealVote(uint _voteID, address _address, uint _voteOption, uint _salt) external returns (bool);
     function startPoll(uint _voteQuorum, uint _commitDuration, uint _revealDuration) external returns (uint pollID);
-    function pollEnded(uint _voteID) external returns (bool ended);
     function resolveVote(uint _voteID) external returns (bool votePassed);
     function claimReward(uint256 _voteID, uint256 _voteOption, address _address, uint256 _stakedTokens) external returns (uint256 reward);
 }
@@ -78,7 +77,7 @@ library weeveRegistry {
         string registryName;
         
         // Address of the weeve Factory
-        address weeveFactoryAddress;
+        address weeveNetworkAddress;
     
         // Address of the WEEV token
         address weeveTokenAddress;
@@ -262,7 +261,7 @@ library weeveRegistry {
 
         return myRegistryStorage.votes.length-1;
     }
-    
+
     // Vote on a challenge
     function voteOnChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender, uint256 _numberOfTokens, bytes32 _voteHash) public returns (bool success) {
         myRegistryStorage.token.transferFrom(_sender, address(this), _numberOfTokens);
@@ -279,7 +278,7 @@ library weeveRegistry {
         myRegistryStorage.votes[_voteNumber].voteDetails[_sender].voteChoice = _voteOption;
         return true;
     }
-        
+
     // Resolve a vote after the reveal-phase is over
     function resolveChallenge(RegistryStorage storage myRegistryStorage, uint256 _voteNumber) public returns (bool votePassed) {
         Vote storage currentVote = myRegistryStorage.votes[_voteNumber];
@@ -297,7 +296,7 @@ library weeveRegistry {
         }
         return votePassed;
     }
-    
+
     // Claim the reward of a finished vote
     function claimRewardOfVote(RegistryStorage storage myRegistryStorage, uint256 _voteNumber, address _sender) public returns (bool success) {
         if(!myRegistryStorage.votes[_voteNumber].isResolved) {
